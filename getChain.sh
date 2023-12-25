@@ -1,46 +1,38 @@
 #!/bin/sh
 
-BASE=$( realpath $( dirname $0 ) )
+base=$( realpath $( dirname $0 ) )
 
-. $BASE/helpers.sh
+. $base/include.sh
 
-flyCheck
-
-if [ "$1" = "" ] ; then
-  echo "Usage: $0 FQDN [cert dir]"
+if [ $# -ne 1 ] ; then
+  echo "Usage: $0 FQDN"
   exit 1
 fi
 
-DOMAIN="$1"
+require openssl curl || exit 1
 
-if [ ! -f "$2" ] ; then
-  CERTS="$BASE/certs"
+domain="$1"
+certs="$base/certs"
+
+mkdir -p $certs || exit 1
+info "Using $certs"
+
+pem="$certs/$domain.pem"
+if domainPEM $domain > $pem; then
+  ok "$( basename $pem) ($( daysLeft $pem ) days left)"
 else
-  CERTS="$( realpath $2 )"
+  ko "$( basename $pem)"
+  exit 1
 fi
 
-echo "Using $CERTS"
-mkdir -p $CERTS
-
-
-PEM="$CERTS/$DOMAIN.pem"
-printf "$( fileName $PEM)"
-domainPEM $DOMAIN > $PEM
-echo " - $( daysLeft $PEM ) days left"
-
-while [ "$( issuerURL $PEM )" != "" ]
+while [ "$( issuerURL $pem )" != "" ]
 do
-
-  T="$T  "
-
-  ISSUER="$( issuerName $PEM )"
-  URL="$( issuerURL $PEM )"
-  CRT="$CERTS/$ISSUER"
-
-  curl -s $URL --output $CRT
-
-  PEM="$CRT.pem"
-  printf "$T$( fileName $PEM)"
-  openssl x509 -inform $( format $CRT ) -outform PEM -in $CRT > $PEM
-  echo " - $( daysLeft $PEM ) days left"
+  tab="$tab  "
+  issuer="$( issuerName $pem )"
+  url="$( issuerURL $pem )"
+  crt="$certs/$issuer.crt"
+  curl -s $url --output $crt
+  pem="$( echo "$crt" | sed 's/crt$/pem/g' )"
+  openssl x509 -inform $( format $crt ) -outform PEM -in $crt > $pem
+  ok "$tab$( basename $pem) ($( daysLeft $pem ) days left)"
 done
